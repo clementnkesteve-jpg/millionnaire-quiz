@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Millionnaire Quiz</title>
+  <meta name="description" content="Jeu de quiz façon « Qui veut gagner des millions ? » : culture générale, cinéma, musique, anime, sports et plus. Grimpez la pyramide jusqu'au million !">
+  <meta name="theme-color" content="#070b34">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><div class="bg-rays"></div></div>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+
+  <header class="topbar">
+    <button class="brand" id="brand-home" type="button" aria-label="Retour à l'accueil">
+      <span class="brand-coin">€</span>
+      <span class="brand-text">Millionnaire<b>Quiz</b></span>
+    </button>
+    <div class="player-chip" id="player-chip">
+      <span class="chip-level" id="chip-level">Niv. 1</span>
+      <span class="chip-mult" id="chip-mult">×1,00</span>
+      <span class="chip-bank" id="chip-bank">0 €</span>
+    </div>
+    <button class="icon-btn" id="sound-toggle" type="button" aria-label="Couper le son">🔊</button>
+  </header>
+
+  <main>
+    <!-- ACCUEIL -->
+    <section id="screen-home" class="screen active">
+      <div class="hero">
+        <div class="logo-rings" aria-hidden="true"><span></span><span></span><span></span></div>
+        <h1 class="logo">
+          <small>Qui veut gagner</small>
+          <span>des millions ?</span>
+        </h1>
+        <p class="tagline">15 questions. 4 jokers. Un million d'euros (virtuels) au sommet.</p>
+      </div>
+
+      <div class="home-grid">
+        <div class="card start-card">
+          <label for="player-name" class="label">Ton nom de candidat</label>
+          <input id="player-name" class="input" maxlength="20" placeholder="Ex. : Clément" autocomplete="nickname">
+          <button class="btn btn-gold btn-xl" id="btn-play" type="button">🎬 Jouer</button>
+          <p class="rank-line">Rang : <b id="home-rank">Candidat</b></p>
+        </div>
+
+        <div class="card stats-card">
+          <h2 class="card-title">Ta carrière</h2>
+          <div class="stats">
+            <div class="stat"><span class="stat-label">Banque totale</span><span class="stat-value gold" id="stat-bank">0 €</span></div>
+            <div class="stat"><span class="stat-label">Meilleur gain</span><span class="stat-value" id="stat-best">0 €</span></div>
+            <div class="stat"><span class="stat-label">Parties</span><span class="stat-value" id="stat-games">0</span></div>
+            <div class="stat"><span class="stat-label">Bonnes réponses</span><span class="stat-value" id="stat-correct">0</span></div>
+          </div>
+          <div class="xp">
+            <div class="xp-head">
+              <span>Niveau <b id="stat-level">1</b></span>
+              <span>Multiplicateur de gains <b class="gold" id="stat-mult">×1,00</b></span>
+            </div>
+            <div class="xp-bar"><div class="xp-fill" id="xp-fill"></div></div>
+            <div class="xp-foot" id="xp-foot">0 / 50 XP</div>
+          </div>
+        </div>
+
+        <div class="card badges-card">
+          <h2 class="card-title">Trophées <span class="muted" id="badge-count">0/0</span></h2>
+          <div class="badges" id="badges"></div>
+        </div>
+
+        <div class="card rules-card">
+          <h2 class="card-title">Comment jouer</h2>
+          <ul class="rules">
+            <li><b>15 questions</b> de plus en plus difficiles, de 100 € à <b class="gold">1 000 000 €</b>.</li>
+            <li><b>Paliers</b> à 1 000 € et 32 000 € : ces gains sont garantis même en cas d'erreur.</li>
+            <li><b>4 jokers</b> : 50:50, appel à un ami, vote du public et changer de question.</li>
+            <li><b>Bonus vitesse & série</b> : réponds vite et enchaîne pour remplir ta cagnotte bonus.</li>
+            <li><b>Chaque victoire te fait monter de niveau</b> : ton multiplicateur augmente tous tes gains futurs !</li>
+            <li>Tu peux <b>partir avec tes gains</b> à tout moment. Raccourcis clavier : A B C D ou 1 2 3 4.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- CATÉGORIES -->
+    <section id="screen-cats" class="screen">
+      <div class="screen-head">
+        <button class="btn btn-ghost" data-go="home" type="button">← Retour</button>
+        <h2>Choisis ton thème</h2>
+      </div>
+      <div class="cat-grid" id="cat-grid"></div>
+    </section>
+
+    <!-- JEU -->
+    <section id="screen-game" class="screen">
+      <div class="game-layout">
+        <div class="game-main">
+          <div class="hud">
+            <span class="pill" id="hud-cat">🧠 Culture</span>
+            <span class="pill pill-strong" id="hud-step">Question 1 / 15 · 100 €</span>
+            <span class="pill pill-bonus" id="hud-bonus" title="Cagnotte bonus (perdue en cas d'erreur)">✨ Bonus 0 €</span>
+            <span class="pill pill-combo" id="hud-combo" hidden>🔥 ×0</span>
+            <div class="timer" id="timer" aria-label="Temps restant">
+              <svg viewBox="0 0 44 44"><circle class="timer-track" cx="22" cy="22" r="19"/><circle class="timer-fill" id="timer-fill" cx="22" cy="22" r="19"/></svg>
+              <span id="timer-text">30</span>
+            </div>
+          </div>
+
+          <div class="lifelines">
+            <button class="lifeline" data-life="fifty" type="button" title="50:50 — retire deux mauvaises réponses"><span>50:50</span></button>
+            <button class="lifeline" data-life="phone" type="button" title="Appel à un ami"><span>📞</span></button>
+            <button class="lifeline" data-life="audience" type="button" title="Vote du public"><span>👥</span></button>
+            <button class="lifeline" data-life="swap" type="button" title="Changer de question"><span>🔄</span></button>
+            <button class="btn btn-quit" id="btn-quit" type="button">Partir avec <b id="quit-amount">0 €</b></button>
+          </div>
+
+          <div class="question-box" id="question-box">
+            <p id="q-text">…</p>
+          </div>
+
+          <div class="answers" id="answers">
+            <button class="answer" data-i="0" type="button"><span class="letter">A</span><span class="txt"></span></button>
+            <button class="answer" data-i="1" type="button"><span class="letter">B</span><span class="txt"></span></button>
+            <button class="answer" data-i="2" type="button"><span class="letter">C</span><span class="txt"></span></button>
+            <button class="answer" data-i="3" type="button"><span class="letter">D</span><span class="txt"></span></button>
+          </div>
+          <div class="float-layer" id="float-layer" aria-live="polite"></div>
+        </div>
+
+        <aside class="ladder" aria-label="Pyramide des gains">
+          <ol id="ladder"></ol>
+        </aside>
+      </div>
+    </section>
+
+    <!-- FIN -->
+    <section id="screen-end" class="screen">
+      <div class="end-wrap">
+        <div class="end-emoji" id="end-emoji">🏆</div>
+        <h2 class="end-title" id="end-title">Bravo !</h2>
+        <p class="end-sub" id="end-sub"></p>
+
+        <div class="cheque">
+          <div class="cheque-head">
+            <span>BANQUE DU MILLION</span>
+            <span id="cheque-date"></span>
+          </div>
+          <div class="cheque-body">
+            <span class="cheque-label">Payez à l'ordre de <b id="cheque-name">Candidat</b></span>
+            <span class="cheque-amount" id="cheque-amount">0 €</span>
+          </div>
+          <ul class="breakdown" id="breakdown"></ul>
+        </div>
+
+        <div class="end-xp" id="end-xp"></div>
+
+        <div class="end-actions">
+          <button class="btn btn-gold btn-xl" id="btn-replay" type="button">🔁 Rejouer</button>
+          <button class="btn btn-ghost" data-go="cats" type="button">Changer de thème</button>
+          <button class="btn btn-ghost" data-go="home" type="button">Accueil</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" id="modal-card"></div>
+  </div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="js/questions.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
