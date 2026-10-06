@@ -1,0 +1,16 @@
+{
+  "name": "Millionnaire Quiz",
+  "short_name": "Millionnaire",
+  "description": "Jeu de quiz façon « Qui veut gagner des millions ? »",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#03051c",
+  "theme_color": "#070b34",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
