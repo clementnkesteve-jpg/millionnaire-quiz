@@ -91,7 +91,7 @@
           <ul class="rules">
             <li><b>15 questions</b> de plus en plus difficiles, de 100 € à <b class="gold">1 000 000 €</b>.</li>
             <li><b>Paliers</b> à 1 000 € et 32 000 € : ces gains sont garantis même en cas d'erreur.</li>
-            <li><b>4 jokers</b> : 50:50, appel à un ami, vote du public et changer de question.</li>
+            <li><b>4 jokers</b>, un seul usage chacun par partie : <b>50:50</b> (2 mauvaises réponses retirées), <b>Public</b> (pourcentages de vote pour chaque réponse), <b>Skip</b> (la question est remplacée par une autre) et <b>Ami</b> (sa recommandation, plus fiable si c'est son domaine).</li>
             <li><b>Bonus vitesse & série</b> : réponds vite et enchaîne pour remplir ta cagnotte bonus.</li>
             <li><b>Chaque victoire te fait monter de niveau</b> : ton multiplicateur augmente tous tes gains futurs !</li>
             <li>Tu peux <b>partir avec tes gains</b> à tout moment. Raccourcis clavier : A B C D ou 1 2 3 4.</li>
@@ -129,10 +129,12 @@
           </div>
 
           <div class="lifelines">
-            <button class="lifeline" data-life="fifty" type="button" title="50:50 — retire deux mauvaises réponses"><span>50:50</span></button>
-            <button class="lifeline" data-life="phone" type="button" title="Appel à un ami"><span>📞</span></button>
-            <button class="lifeline" data-life="audience" type="button" title="Vote du public"><span>👥</span></button>
-            <button class="lifeline" data-life="swap" type="button" title="Changer de question"><span>🔄</span></button>
+            <span class="ll-count" id="ll-count" title="Jokers restants">🃏 <b>4</b>/4</span>
+            <button class="lifeline" data-life="fifty" type="button" title="50:50 — retire deux mauvaises réponses"><span class="ll-ico">½</span><span class="ll-label">50:50</span></button>
+            <button class="lifeline" data-life="audience" type="button" title="Vote du public — vois les pourcentages de chaque réponse"><span class="ll-ico">👥</span><span class="ll-label">Public</span></button>
+            <button class="lifeline" data-life="swap" type="button" title="Skip — passe la question, elle est remplacée par une autre"><span class="ll-ico">⏭️</span><span class="ll-label">Skip</span></button>
+            <button class="lifeline" data-life="phone" type="button" title="Appel à un ami — demande-lui sa recommandation"><span class="ll-ico">📞</span><span class="ll-label">Ami</span></button>
+            <button class="ll-help" id="ll-help" type="button" aria-label="Comment marchent les jokers ?">?</button>
             <button class="btn btn-quit" id="btn-quit" type="button">Partir avec <b id="quit-amount">0 €</b></button>
           </div>
 
@@ -141,10 +143,10 @@
           </div>
 
           <div class="answers" id="answers">
-            <button class="answer" data-i="0" type="button"><span class="letter">A</span><span class="txt"></span></button>
-            <button class="answer" data-i="1" type="button"><span class="letter">B</span><span class="txt"></span></button>
-            <button class="answer" data-i="2" type="button"><span class="letter">C</span><span class="txt"></span></button>
-            <button class="answer" data-i="3" type="button"><span class="letter">D</span><span class="txt"></span></button>
+            <button class="answer" data-i="0" type="button"><span class="letter">A</span><span class="txt"></span><span class="hint"></span></button>
+            <button class="answer" data-i="1" type="button"><span class="letter">B</span><span class="txt"></span><span class="hint"></span></button>
+            <button class="answer" data-i="2" type="button"><span class="letter">C</span><span class="txt"></span><span class="hint"></span></button>
+            <button class="answer" data-i="3" type="button"><span class="letter">D</span><span class="txt"></span><span class="hint"></span></button>
           </div>
           <div class="float-layer" id="float-layer" aria-live="polite"></div>
         </div>

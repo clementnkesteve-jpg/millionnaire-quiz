@@ -9,7 +9,11 @@ Jeu de quiz inspiré de « Qui veut gagner des millions ? », en HTML/CSS/JavaSc
 - **Mes questions** : ajoute tes propres questions dans n'importe quelle catégorie, avec export / import en JSON.
 - **Options** : pack étendu, questions perso, chrono (Normal, Express, Détente sans chrono), animations (spectaculaires ou réduites).
 - **Pyramide de 15 questions** de 100 € à 1 000 000 €, difficulté croissante, paliers garantis à 1 000 € et 32 000 €.
-- **4 jokers** : 50:50, appel à un ami, vote du public, changer de question.
+- **4 jokers** (un usage chacun par partie, présentés au premier lancement, bouton « ? » pour les revoir) :
+  - **50:50** : deux mauvaises réponses sont retirées ;
+  - **Public** : le public vote, les pourcentages s'affichent avec des barres puis restent visibles sur chaque réponse ;
+  - **Skip** : la question est sautée et remplacée par une autre du même niveau ;
+  - **Ami** : tu choisis un ami parmi trois, il recommande une réponse avec son niveau de confiance (plus fiable dans son domaine).
 - **Chrono** par question (30 s / 45 s / 60 s selon la difficulté).
 - **Système de gratification** :
   - cagnotte bonus (vitesse de réponse + séries de bonnes réponses), perdue en cas d'erreur ;

@@ -457,7 +457,13 @@
     game.shownBonus = 0;
     renderLadder();
     show('game');
+    renderJokerCount();
     nextQuestion();
+    if (!profile.seenJokers) {
+      profile.seenJokers = true;
+      saveProfile();
+      setTimeout(() => { if (game && !game.over) showJokerHelp(true); }, 900);
+    }
   }
 
   function nextQuestion(swap = false) {
@@ -477,8 +483,11 @@
         void btn.offsetWidth;
         btn.classList.add('enter');
         btn.disabled = false;
+        btn.style.removeProperty('--pct');
+        $('.hint', btn).innerHTML = '';
         $('.txt', btn).textContent = cur.answers[i];
       });
+      $('#answers').classList.remove('has-votes');
       updateHud();
       game.locked = false;
       startTimer();
@@ -702,6 +711,38 @@
   }
 
   /* ---------- Jokers ---------- */
+  // 4 jokers, un seul usage chacun par partie
+  const JOKERS = {
+    fifty:    { ico: '½',  name: '50:50',       desc: 'Deux mauvaises réponses sont retirées. Il ne reste que la bonne et une mauvaise.' },
+    audience: { ico: '👥', name: 'Vote du public', desc: 'Le public vote de son côté : tu vois le pourcentage de votes pour chaque réponse, directement sur les réponses.' },
+    swap:     { ico: '⏭️', name: 'Skip',        desc: 'Tu sautes la question : elle est remplacée par une autre question du même niveau, sans perdre tes gains.' },
+    phone:    { ico: '📞', name: 'Appel à un ami', desc: 'Tu choisis un ami parmi trois. Il te recommande une réponse, avec son niveau de confiance. Plus fiable si c\'est son domaine !' }
+  };
+
+  function jokersLeft() {
+    return Object.values(game.lifelines).filter(Boolean).length;
+  }
+  function renderJokerCount() {
+    const el = $('#ll-count');
+    el.innerHTML = `🃏 <b>${jokersLeft()}</b>/4`;
+    bump(el);
+  }
+
+  function showJokerHelp(first) {
+    openModal(`
+      <div class="modal-big">🃏</div>
+      <h3>${first ? 'Tu as droit à 4 jokers !' : 'Tes 4 jokers'}</h3>
+      <p class="muted small">Chaque joker ne peut être utilisé qu'une seule fois par partie. Le chrono est en pause pendant le vote du public et l'appel.</p>
+      <ul class="joker-list">
+        ${Object.entries(JOKERS).map(([k, j], n) => `
+          <li style="--i:${n}" class="${game && !game.lifelines[k] ? 'spent' : ''}">
+            <span class="jk-ico">${j.ico}</span>
+            <span><b>${esc(j.name)}</b>${game && !game.lifelines[k] ? ' <em>(déjà utilisé)</em>' : ''}<small>${esc(j.desc)}</small></span>
+          </li>`).join('')}
+      </ul>
+      <div class="modal-actions"><button class="btn btn-gold" data-close type="button">${first ? 'C\'est parti !' : 'Compris'}</button></div>`);
+  }
+
   function useLifeline(kind) {
     if (!game || game.locked || !game.lifelines[kind]) return;
     game.lifelines[kind] = false;
@@ -711,6 +752,7 @@
     restartAnim(btn, 'used');
     flash('blue');
     Sound.lifeline();
+    renderJokerCount();
     ({ fifty, phone, audience, swap })[kind]();
   }
 
@@ -718,11 +760,22 @@
     return [0, 1, 2, 3].filter(i => !game.current.removed.includes(i));
   }
 
+  // Petite étiquette affichée sur une réponse (pourcentage du public, conseil de l'ami)
+  function setHint(i, html, kind, extra = '') {
+    const hint = $('.hint', $$('.answer')[i]);
+    const tag = document.createElement('span');
+    tag.className = 'tag tag-' + kind + (extra ? ' ' + extra : '');
+    tag.innerHTML = html;
+    hint.querySelectorAll('.tag-' + kind).forEach(t => t.remove());
+    hint.appendChild(tag);
+  }
+
   function fifty() {
     const cur = game.current;
     const wrong = shuffle([0, 1, 2, 3].filter(i => i !== cur.correct)).slice(0, 2);
     cur.removed = wrong;
     wrong.forEach(i => { const b = $$('.answer')[i]; b.classList.remove('enter'); b.classList.add('removed'); b.disabled = true; });
+    showBanner('½ Joker 50:50', 'Deux réponses retirées', '');
   }
 
   function audience() {
@@ -738,53 +791,109 @@
     let rest = 100 - pct[favorite];
     const others = shuffle(vis.filter(i => i !== favorite));
     others.forEach((i, k) => {
-      const v = k === others.length - 1 ? rest : rand(rest + 1);
+      // Les autres réponses ne dépassent jamais la réponse favorite
+      const v = k === others.length - 1 ? rest : Math.min(rand(rest + 1), pct[favorite] - 1);
       pct[i] = v; rest -= v;
     });
+    const top = vis.reduce((a, b) => (pct[b] > pct[a] ? b : a), vis[0]);
 
     openModal(`
       <div class="modal-big">👥</div>
       <h3>Le public a voté</h3>
+      <p class="muted small" id="aud-status">Dépouillement des votes…</p>
       <div class="bars">
-        ${[0, 1, 2, 3].map(i => `<div class="bar">
-          <span class="bar-pct">${vis.includes(i) ? pct[i] + ' %' : '—'}</span>
+        ${[0, 1, 2, 3].map(i => `<div class="bar ${i === top ? 'top' : ''} ${vis.includes(i) ? '' : 'off'}">
+          <span class="bar-pct" data-pct="${pct[i]}">${vis.includes(i) ? '0 %' : '—'}</span>
           <div class="bar-col" data-h="${pct[i]}"></div>
           <span class="bar-letter">${LETTERS[i]}</span></div>`).join('')}
       </div>
-      <div class="modal-actions"><button class="btn btn-gold" data-close type="button">Merci le public !</button></div>`);
+      <p class="aud-reco" id="aud-reco" hidden>Le public recommande la réponse <b>${LETTERS[top]}</b> : « ${esc(cur.answers[top])} » (${pct[top]} %)</p>
+      <div class="modal-actions"><button class="btn btn-gold" data-close type="button">Merci le public !</button></div>`,
+      () => {
+        // Les pourcentages restent affichés sur les réponses
+        vis.forEach(i => setHint(i, `👥 ${pct[i]} %`, 'aud', i === top ? 'tag-top' : ''));
+        $$('.answer').forEach((b, i) => b.style.setProperty('--pct', vis.includes(i) ? pct[i] + '%' : '0%'));
+        $('#answers').classList.add('has-votes');
+      });
     requestAnimationFrame(() => requestAnimationFrame(() => {
       $$('.bar-col').forEach(el => { el.style.height = Math.max(2, +el.dataset.h) + '%'; });
+      // Les pourcentages « comptent » pendant que les barres montent
+      const t0 = performance.now();
+      (function step(t) {
+        const p = Math.min(1, (t - t0) / 1200);
+        $$('.bar:not(.off) .bar-pct').forEach(el => { el.textContent = Math.round(+el.dataset.pct * (1 - Math.pow(1 - p, 3))) + ' %'; });
+        if (p < 1 && !$('#modal').hidden) requestAnimationFrame(step);
+        else if (!$('#modal').hidden) {
+          $('#aud-status').textContent = 'Résultat du vote';
+          $('#aud-reco').hidden = false;
+          const topBar = $('.bar.top');
+          if (topBar) topBar.classList.add('win');
+        }
+      })(t0);
     }));
   }
 
   function phone() {
     const cur = game.current;
+    // On propose 3 amis : celui dont c'est le domaine (s'il existe) + 2 autres au hasard
+    const experts = FRIENDS.filter(f => f.fav.includes(cur.src.cat));
+    const pool = shuffle(FRIENDS.filter(f => !experts.includes(f)));
+    const choices = shuffle((experts.length ? [experts[rand(experts.length)]] : []).concat(pool).slice(0, 3));
+
+    openModal(`
+      <div class="modal-big">📞</div>
+      <h3>Qui veux-tu appeler ?</h3>
+      <p class="muted small">Choisis bien : un ami est plus fiable dans son domaine.</p>
+      <div class="friend-pick">
+        ${choices.map((f, n) => `<button class="friend" data-friend="${FRIENDS.indexOf(f)}" type="button" style="--i:${n}">
+          <span class="friend-ava">${esc(f.name.replace('Dr ', '').charAt(0))}</span>
+          <span><b>${esc(f.name)}</b><small>${esc(f.job)}</small></span>
+        </button>`).join('')}
+      </div>`);
+    $$('.friend', $('#modal-card')).forEach(b => b.addEventListener('click', () => callFriend(FRIENDS[+b.dataset.friend])));
+  }
+
+  function callFriend(friend) {
+    const cur = game.current;
     const tier = tierFor(game.level);
-    const friend = FRIENDS[rand(FRIENDS.length)];
     const expert = friend.fav.includes(cur.src.cat);
     const chance = Math.min(0.97, [0.9, 0.72, 0.5][tier - 1] + (expert ? 0.2 : 0));
     const vis = visibleIndexes();
     const right = Math.random() < chance;
     const pick = right ? cur.correct : vis.filter(i => i !== cur.correct)[rand(vis.length - 1)];
     const conf = right ? 60 + rand(36) : 30 + rand(40);
+    const e = friend.f ? 'e' : '';
     const lines = conf >= 80
-      ? `Facile ! C'est la réponse <b>${LETTERS[pick]}</b> : « ${esc(cur.answers[pick])} ». J'en suis sûr${friend.f ? 'e' : ''} à ${conf} %.`
+      ? `Facile ! Je te recommande la réponse <b>${LETTERS[pick]}</b> : « ${esc(cur.answers[pick])} ». J'en suis sûr${e} à ${conf} %.`
       : conf >= 55
-        ? `Hmm… je dirais <b>${LETTERS[pick]}</b>, « ${esc(cur.answers[pick])} ». Confiance : ${conf} %.`
-        : `Alors là… honnêtement, je tenterais <b>${LETTERS[pick]}</b> (« ${esc(cur.answers[pick])} »), mais seulement à ${conf} %. Désolé${friend.f ? 'e' : ''} !`;
+        ? `Hmm… je te conseille <b>${LETTERS[pick]}</b>, « ${esc(cur.answers[pick])} ». Confiance : ${conf} %.`
+        : `Alors là… honnêtement, je tenterais <b>${LETTERS[pick]}</b> (« ${esc(cur.answers[pick])} »), mais seulement à ${conf} %. Désolé${e} !`;
 
-    openModal(`
-      <div class="modal-big">📞</div>
+    $('#modal-card').innerHTML = `
+      <div class="modal-big ringing">📞</div>
       <h3>Appel à ${esc(friend.name)}</h3>
-      <p class="muted">${esc(friend.job)}${expert ? ' — c\'est son domaine !' : ''}</p>
-      <div class="phone-bubble"><span class="who">${esc(friend.name)}</span><span id="phone-msg" class="typing">En train de réfléchir</span></div>
-      <div class="modal-actions"><button class="btn btn-gold" data-close type="button">Raccrocher</button></div>`);
-    setTimeout(() => { const m = $('#phone-msg'); if (m) { m.classList.remove('typing'); m.innerHTML = lines; } }, 1600);
+      <p class="muted">${esc(friend.job)}${expert ? ' — <b class="gold">c\'est son domaine !</b>' : ''}</p>
+      <div class="phone-bubble"><span class="who">${esc(friend.name)}</span><span id="phone-msg" class="typing">Ça sonne</span></div>
+      <div class="conf" id="phone-conf" hidden><span>Confiance</span><div class="conf-bar"><div class="conf-fill" id="conf-fill"></div></div><b>${conf} %</b></div>
+      <div class="modal-actions"><button class="btn btn-gold" data-close type="button">Raccrocher</button></div>`;
+    modalOnClose = () => setHint(pick, `📞 ${esc(friend.name)} · ${conf} %`, 'friend');
+    setTimeout(() => { const m = $('#phone-msg'); if (m) m.textContent = 'En train de réfléchir'; }, 900);
+    setTimeout(() => {
+      const m = $('#phone-msg');
+      if (!m) return;
+      m.classList.remove('typing'); m.innerHTML = lines;
+      $('.ringing') && $('.ringing').classList.remove('ringing');
+      $('#phone-conf').hidden = false;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const fill = $('#conf-fill');
+        if (fill) { fill.style.width = conf + '%'; fill.classList.toggle('low', conf < 55); }
+      }));
+    }, 2000);
   }
 
   function swap() {
     stopTimer();
-    floatText('🔄 Nouvelle question', false);
+    showBanner('⏭️ Skip', 'Question remplacée', '');
     nextQuestion(true);
   }
 
@@ -1105,6 +1214,7 @@
   });
   $$('.lifeline').forEach(b => b.addEventListener('click', () => useLifeline(b.dataset.life)));
   $('#btn-quit').addEventListener('click', askQuit);
+  $('#ll-help').addEventListener('click', () => { Sound.click(); showJokerHelp(false); });
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !$('#modal').hidden) { closeModal(); return; }
