@@ -6,12 +6,18 @@
    * ======================================================= */
   const LADDER = [100, 200, 300, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 125000, 250000, 500000, 1000000];
   const SAFE_LEVELS = [4, 9];               // index des paliers garantis (1 000 € et 32 000 €)
-  const TIME_BY_TIER = [30, 45, 60];        // secondes par question selon la difficulté
+  const TIME_MODES = {                      // secondes par question selon la difficulté
+    normal:  { label: 'Normal (30 / 45 / 60 s)', times: [30, 45, 60] },
+    express: { label: 'Express (15 / 20 / 25 s)', times: [15, 20, 25] },
+    relax:   { label: 'Détente (sans chrono)', times: null }
+  };
   const RECENT_MAX = 120;                   // évite de reposer trop vite les mêmes questions
   const STORE_KEY = 'millionnaire-quiz.profile.v1';
 
   const CATEGORIES = window.QUIZ_CATEGORIES;
-  const QUESTIONS = window.QUIZ_QUESTIONS;
+  const BASE_QUESTIONS = window.QUIZ_QUESTIONS;
+  const PLUS_QUESTIONS = window.QUIZ_QUESTIONS_PLUS || [];
+  let QUESTIONS = BASE_QUESTIONS;           // recalculé selon les options (pack étendu, questions perso)
   const CAT_BY_ID = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
   const MIX = { id: 'mix', name: 'Mixte', emoji: '🎲', color: '#ffc93c' };
 
@@ -61,7 +67,9 @@
    * ======================================================= */
   const defaultProfile = () => ({
     name: '', bank: 0, xp: 0, games: 0, millions: 0, best: 0, correct: 0,
-    achievements: [], catsPlayed: [], catBest: {}, recent: [], muted: false
+    achievements: [], catsPlayed: [], catBest: {}, recent: [], muted: false,
+    custom: [],
+    options: { extended: true, custom: true, timer: 'normal', fx: 'max' }
   });
   function loadProfile() {
     try {
@@ -74,6 +82,20 @@
     try { localStorage.setItem(STORE_KEY, JSON.stringify(profile)); } catch (e) { /* ignoré */ }
   }
   const profile = loadProfile();
+  profile.options = Object.assign(defaultProfile().options, profile.options);
+  if (!TIME_MODES[profile.options.timer]) profile.options.timer = 'normal';
+
+  function rebuildPool() {
+    QUESTIONS = BASE_QUESTIONS.concat(
+      profile.options.extended ? PLUS_QUESTIONS : [],
+      profile.options.custom ? profile.custom : []
+    );
+  }
+  rebuildPool();
+
+  const fxLow = () => reducedMotion || profile.options.fx === 'low';
+  function applyFx() { document.body.classList.toggle('fx-low', fxLow()); }
+  applyFx();
 
   // Progression : chaque victoire rapporte de l'XP ; chaque niveau augmente le multiplicateur de gains de 5 %.
   const levelFromXp = xp => Math.floor(Math.sqrt(xp / 50)) + 1;
@@ -139,7 +161,7 @@
     addEventListener('resize', resize); resize();
     function add(p) { parts.push(p); if (!raf) raf = requestAnimationFrame(loop); }
     function burst(n = 100, x = innerWidth / 2, y = innerHeight / 3) {
-      if (reducedMotion) n = Math.min(n, 20);
+      if (fxLow()) n = Math.min(n, 20);
       for (let i = 0; i < n; i++) {
         const a = Math.random() * Math.PI * 2, s = 3 + Math.random() * 9;
         add({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 6, w: 6 + Math.random() * 6, h: 4 + Math.random() * 4,
@@ -147,7 +169,7 @@
       }
     }
     function rain(n = 220) {
-      if (reducedMotion) n = 30;
+      if (fxLow()) n = 30;
       for (let i = 0; i < n; i++) {
         add({ x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * 0.6, vx: (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 3,
               w: 7 + Math.random() * 6, h: 4 + Math.random() * 4, r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.25,
@@ -176,8 +198,110 @@
   function show(screen) {
     $$('.screen').forEach(s => s.classList.toggle('active', s.id === 'screen-' + screen));
     window.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' });
+    document.body.classList.remove('suspense', 'danger');
     if (screen === 'home') renderHome();
     if (screen === 'cats') renderCats();
+    if (screen === 'editor') renderEditor();
+  }
+
+  /* =========================================================
+   * Effets visuels
+   * ======================================================= */
+  function restartAnim(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+  }
+  const bump = el => restartAnim(el, 'bump');
+
+  function flash(kind) {
+    if (fxLow()) return;
+    const el = $('#fx-flash');
+    el.className = 'fx-flash ' + kind;
+    restartAnim(el, 'on');
+  }
+
+  function shakeScreen() {
+    if (fxLow()) return;
+    restartAnim($('main'), 'shake');
+  }
+
+  let bannerTimer = null;
+  function showBanner(kicker, title, kind = '') {
+    const el = $('#banner');
+    el.className = 'banner ' + kind;
+    el.innerHTML = `<small>${esc(kicker)}</small><strong>${esc(title)}</strong>`;
+    el.hidden = false;
+    restartAnim(el, 'on');
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => { el.hidden = true; }, 1900);
+  }
+
+  // Une pièce s'envole de la bonne réponse vers la pyramide
+  function flyCoin(fromEl, toEl) {
+    if (fxLow() || !fromEl || !toEl || !fromEl.animate) return;
+    const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+    for (let k = 0; k < 3; k++) {
+      const coin = document.createElement('div');
+      coin.className = 'fly-coin';
+      coin.textContent = '€';
+      document.body.appendChild(coin);
+      const x0 = a.left + a.width / 2, y0 = a.top + a.height / 2;
+      const x1 = b.left + b.width / 2, y1 = b.top + b.height / 2;
+      const mx = (x0 + x1) / 2 + (Math.random() - 0.5) * 120, my = Math.min(y0, y1) - 80 - Math.random() * 60;
+      coin.animate([
+        { transform: `translate(${x0}px, ${y0}px) scale(0.4) rotate(0deg)`, opacity: 0 },
+        { transform: `translate(${mx}px, ${my}px) scale(1.2) rotate(200deg)`, opacity: 1, offset: 0.45 },
+        { transform: `translate(${x1}px, ${y1}px) scale(0.6) rotate(400deg)`, opacity: 0.2 }
+      ], { duration: 900 + k * 120, delay: k * 90, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards' })
+        .onfinish = () => coin.remove();
+    }
+    setTimeout(() => restartAnim(toEl, 'hit'), 900);
+  }
+
+  // Compteur animé pour les montants du HUD
+  function tweenMoney(el, from, to, prefix = '', dur = 700) {
+    if (fxLow() || from === to) { el.textContent = prefix + fmt(to); return; }
+    const t0 = performance.now();
+    (function step(t) {
+      const p = Math.min(1, (t - t0) / dur);
+      el.textContent = prefix + fmt(from + (to - from) * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(step);
+    })(t0);
+  }
+
+  // Pièces flottantes sur l'accueil
+  function spawnCoins() {
+    const box = $('#coins');
+    if (!box || box.childElementCount) return;
+    const icons = ['💰', '🪙', '💶', '💎', '⭐'];
+    for (let i = 0; i < 16; i++) {
+      const s = document.createElement('span');
+      s.textContent = icons[i % icons.length];
+      s.style.left = (Math.random() * 100) + '%';
+      s.style.animationDelay = (-Math.random() * 14) + 's';
+      s.style.animationDuration = (9 + Math.random() * 8) + 's';
+      s.style.fontSize = (14 + Math.random() * 22) + 'px';
+      box.appendChild(s);
+    }
+  }
+
+  // Inclinaison 3D des cartes au survol
+  function attachTilt(root) {
+    $$('.cat', root).forEach(card => {
+      card.addEventListener('pointermove', e => {
+        if (fxLow() || e.pointerType !== 'mouse') return;
+        const r = card.getBoundingClientRect();
+        const px = (e.clientX - r.left) / r.width - 0.5, py = (e.clientY - r.top) / r.height - 0.5;
+        card.style.setProperty('--ry', (px * 14).toFixed(2) + 'deg');
+        card.style.setProperty('--rx', (-py * 14).toFixed(2) + 'deg');
+        card.style.setProperty('--mx', ((px + 0.5) * 100).toFixed(1) + '%');
+        card.style.setProperty('--my', ((py + 0.5) * 100).toFixed(1) + '%');
+      });
+      card.addEventListener('pointerleave', () => {
+        card.style.setProperty('--rx', '0deg');
+        card.style.setProperty('--ry', '0deg');
+      });
+    });
   }
 
   /* =========================================================
@@ -194,6 +318,7 @@
 
   function renderHome() {
     renderChip();
+    spawnCoins();
     const lvl = levelFromXp(profile.xp);
     const cur = xpForLevel(lvl), next = xpForLevel(lvl + 1);
     $('#player-name').value = profile.name;
@@ -215,9 +340,10 @@
 
   function renderCats() {
     const count = id => QUESTIONS.filter(q => id === 'mix' || q.cat === id).length;
+    let n = 0;
     const card = (c, extra = '') => {
       const best = profile.catBest[c.id] || 0;
-      return `<button class="cat ${extra}" style="--c:${c.color}" data-cat="${c.id}" type="button">
+      return `<button class="cat ${extra}" style="--c:${c.color};--i:${n++}" data-cat="${c.id}" type="button">
         <span class="cat-emoji">${c.emoji}</span>
         <span><span class="cat-name">${esc(c.name)}</span>
         <span class="cat-meta">${count(c.id)} questions</span>
@@ -225,6 +351,11 @@
       </button>`;
     };
     $('#cat-grid').innerHTML = card(MIX, 'mix') + CATEGORIES.map(c => card(c)).join('');
+    attachTilt($('#cat-grid'));
+    const extras = [];
+    if (profile.options.extended) extras.push('📚 Pack étendu');
+    if (profile.options.custom && profile.custom.length) extras.push(`✍️ ${profile.custom.length} perso`);
+    $('#pack-pill').textContent = extras.length ? extras.join(' · ') : '📘 Pack classique';
   }
 
   function unlock(id) {
@@ -322,40 +453,66 @@
 
     const c = cat === 'mix' ? MIX : CAT_BY_ID[cat];
     $('#hud-cat').textContent = `${c.emoji} ${c.name}`;
-    $$('.lifeline').forEach(b => { b.disabled = false; });
+    $$('.lifeline').forEach(b => { b.disabled = false; b.classList.remove('used'); });
+    game.shownBonus = 0;
     renderLadder();
     show('game');
     nextQuestion();
   }
 
   function nextQuestion(swap = false) {
-    game.current = pickQuestion(game.level);
-    rememberQuestion(game.current.src.id);
-    const cur = game.current;
-
+    if (game.over) return;
+    game.locked = true;
     const qBox = $('#question-box');
-    qBox.classList.remove('enter'); void qBox.offsetWidth; qBox.classList.add('enter');
-    $('#q-text').textContent = cur.q;
-    $$('.answer').forEach((btn, i) => {
-      btn.className = 'answer';
-      void btn.offsetWidth;
-      btn.classList.add('enter');
-      btn.disabled = false;
-      $('.txt', btn).textContent = cur.answers[i];
-    });
-    updateHud();
-    renderLadder();
-    game.locked = false;
-    startTimer();
-    if (!swap) Sound.click();
+    const fill = () => {
+      if (game.over) return;
+      game.current = pickQuestion(game.level);
+      rememberQuestion(game.current.src.id);
+      const cur = game.current;
+      qBox.classList.remove('leave');
+      restartAnim(qBox, 'enter');
+      $('#q-text').textContent = cur.q;
+      $$('.answer').forEach((btn, i) => {
+        btn.className = 'answer';
+        void btn.offsetWidth;
+        btn.classList.add('enter');
+        btn.disabled = false;
+        $('.txt', btn).textContent = cur.answers[i];
+      });
+      updateHud();
+      game.locked = false;
+      startTimer();
+      if (!swap) Sound.click();
+    };
+    // Sortie animée de l'ancienne question avant d'afficher la suivante
+    if (game.current && !fxLow()) {
+      qBox.classList.remove('enter');
+      qBox.classList.add('leave');
+      $$('.answer').forEach(b => { b.classList.remove('enter'); b.classList.add('leave'); });
+      setTimeout(fill, 320);
+    } else {
+      fill();
+    }
   }
 
   function updateHud() {
-    $('#hud-step').textContent = `Question ${game.level + 1} / 15 · ${fmt(LADDER[game.level])}`;
-    $('#hud-bonus').textContent = `✨ Bonus ${fmt(game.bonus)}`;
+    const step = $('#hud-step');
+    const stepText = `Question ${game.level + 1} / 15 · ${fmt(LADDER[game.level])}`;
+    if (step.textContent !== stepText) { step.textContent = stepText; bump(step); }
+    const bonusEl = $('#hud-bonus');
+    if (game.shownBonus !== game.bonus) {
+      tweenMoney(bonusEl, game.shownBonus || 0, game.bonus, '✨ Bonus ');
+      bump(bonusEl);
+      game.shownBonus = game.bonus;
+    } else {
+      bonusEl.textContent = `✨ Bonus ${fmt(game.bonus)}`;
+    }
     const combo = $('#hud-combo');
+    const wasHidden = combo.hidden;
     combo.hidden = game.combo < 2;
     combo.textContent = `🔥 Série ×${game.combo}`;
+    combo.style.setProperty('--heat', Math.min(game.combo, 10) / 10);
+    if (!combo.hidden && !wasHidden) bump(combo);
     $('#quit-amount').textContent = fmt(currentWinnings() + game.bonus);
     $('#btn-quit').disabled = game.level === 0;
   }
@@ -367,7 +524,8 @@
         SAFE_LEVELS.includes(i) ? 'safe' : '',
         i === LADDER.length - 1 ? 'top' : '',
         game && i < game.level ? 'done' : '',
-        game && i === game.level && !game.over ? 'current' : ''
+        game && i === game.level && !game.over ? 'current' : '',
+        game && i === game.level && game.level > 0 && !game.over ? 'climb' : ''
       ].join(' ');
       return `<li class="${cls}"><span class="num">${i + 1}</span><span class="amt">${fmt(LADDER[i])}</span></li>`;
     }).join('');
@@ -380,9 +538,16 @@
   /* ---------- Chrono ---------- */
   function startTimer() {
     stopTimer();
-    game.timeTotal = TIME_BY_TIER[tierFor(game.level) - 1];
-    game.timeLeft = game.timeTotal;
+    game.qStart = performance.now();
     game.paused = false;
+    const times = TIME_MODES[profile.options.timer].times;
+    if (!times) {                       // mode Détente : pas de chrono
+      game.timeTotal = 0; game.timeLeft = 0;
+      drawTimer();
+      return;
+    }
+    game.timeTotal = times[tierFor(game.level) - 1];
+    game.timeLeft = game.timeTotal;
     drawTimer();
     let lastSec = Math.ceil(game.timeLeft);
     game.timer = setInterval(() => {
@@ -401,20 +566,32 @@
     $('#timer').classList.toggle('paused', p);
   }
   function drawTimer() {
+    const t = $('#timer');
+    if (!game.timeTotal) {
+      $('#timer-fill').style.strokeDashoffset = '0';
+      $('#timer-text').textContent = '∞';
+      t.classList.remove('warn', 'danger');
+      t.classList.add('relax');
+      document.body.classList.remove('danger');
+      return;
+    }
+    t.classList.remove('relax');
     const ratio = game.timeLeft / game.timeTotal;
     $('#timer-fill').style.strokeDashoffset = (119.38 * (1 - ratio)).toFixed(2);
     $('#timer-text').textContent = Math.ceil(game.timeLeft);
-    const t = $('#timer');
     t.classList.toggle('warn', ratio <= 0.5 && ratio > 0.2);
     t.classList.toggle('danger', ratio <= 0.2);
+    document.body.classList.toggle('danger', ratio <= 0.2 && ratio > 0 && !game.locked);
   }
   function timeUp() {
     stopTimer();
     if (game.locked) return;
     game.locked = true;
-    $$('.answer').forEach(b => { b.disabled = true; });
+    $$('.answer').forEach(b => { b.disabled = true; b.classList.remove('enter'); });
     $$('.answer')[game.current.correct].classList.add('correct');
+    document.body.classList.remove('danger');
     floatText('⏰ Temps écoulé !', false);
+    flash('bad'); shakeScreen();
     Sound.wrong();
     setTimeout(() => endGame('time'), 2200);
   }
@@ -426,18 +603,21 @@
     if (!btn || btn.classList.contains('removed')) return;
     game.locked = true;
     stopTimer();
-    const elapsed = game.timeTotal - game.timeLeft;
-    $$('.answer').forEach((b, j) => { b.disabled = true; if (j !== i) b.classList.add('dim'); });
+    const elapsed = (performance.now() - game.qStart) / 1000;
+    $$('.answer').forEach((b, j) => { b.disabled = true; b.classList.remove('enter'); if (j !== i) b.classList.add('dim'); });
     btn.classList.add('selected');
+    document.body.classList.remove('danger');
+    document.body.classList.add('suspense');
     Sound.select();
     // Suspense plus long sur les grosses questions
-    const suspense = reducedMotion ? 600 : 1100 + game.level * 90;
+    const suspense = fxLow() ? 600 : 1100 + game.level * 90;
     setTimeout(() => reveal(i, elapsed), suspense);
   }
 
   function reveal(i, elapsed) {
     const answers = $$('.answer');
     const ok = i === game.current.correct;
+    document.body.classList.remove('suspense');
     answers.forEach(b => b.classList.remove('dim', 'selected'));
     answers[game.current.correct].classList.add('correct');
     if (ok) onCorrect(elapsed);
@@ -451,7 +631,8 @@
     game.maxCombo = Math.max(game.maxCombo, game.combo);
 
     // Bonus : vitesse (jusqu'à 10 % du palier) + série (2 % par réponse au-delà de 2, plafonné à 10 %)
-    const ratio = Math.max(0, game.timeLeft / game.timeTotal);
+    // En mode Détente (sans chrono), le bonus vitesse est calculé sur une base de 30 s
+    const ratio = game.timeTotal ? Math.max(0, game.timeLeft / game.timeTotal) : Math.max(0, 1 - elapsed / 30) * 0.5;
     const speedBonus = Math.round((base * 0.10 * ratio) / 10) * 10;
     const comboBonus = game.combo >= 3 ? Math.round((base * 0.02 * Math.min(game.combo - 2, 5)) / 10) * 10 : 0;
     game.bonus += speedBonus + comboBonus;
@@ -479,20 +660,26 @@
     if (lvl >= 9) unlock('palier2');
     if (lvl >= 9 && !game.usedLifeline) unlock('nolife');
 
+    flash(isSafe || isTop ? 'gold' : 'good');
+    const answerEl = $$('.answer')[game.current.correct];
+    const r = answerEl.getBoundingClientRect();
     if (isSafe) {
-      Confetti.burst(160);
-      toast('🔒', 'Palier atteint', fmt(base) + ' garantis', 'Même en cas d\'erreur, cette somme est à toi.');
+      Confetti.burst(180, r.left + r.width / 2, r.top + r.height / 2);
+      showBanner('🔒 Palier atteint', fmt(base) + ' garantis', 'gold');
     } else if (!isTop) {
-      Confetti.burst(40 + lvl * 6, innerWidth / 2, innerHeight * 0.55);
+      Confetti.burst(40 + lvl * 6, r.left + r.width / 2, r.top + r.height / 2);
+      if (game.combo >= 3) showBanner(`🔥 Série de ${game.combo}`, game.combo >= 5 ? 'Inarrêtable !' : 'Tu es en feu !', 'fire');
     }
 
     game.level++;
     updateHud();
     renderLadder();
+    flyCoin(answerEl, $$('#ladder li')[LADDER.length - 1 - lvl]);
 
     if (isTop) {
+      showBanner('💎 Incroyable', 'MILLIONNAIRE !', 'gold');
       Confetti.rain(320);
-      setTimeout(() => endGame('million'), 1800);
+      setTimeout(() => endGame('million'), 2200);
       return;
     }
     setTimeout(nextQuestion, 1900);
@@ -501,10 +688,8 @@
   function onWrong() {
     game.combo = 0;
     Sound.wrong();
-    $('#question-box').animate(
-      [{ transform: 'translateX(0)' }, { transform: 'translateX(-10px)' }, { transform: 'translateX(10px)' }, { transform: 'translateX(0)' }],
-      { duration: 400 }
-    );
+    flash('bad');
+    shakeScreen();
     setTimeout(() => endGame('wrong'), 2400);
   }
 
@@ -521,7 +706,10 @@
     if (!game || game.locked || !game.lifelines[kind]) return;
     game.lifelines[kind] = false;
     game.usedLifeline = true;
-    $(`.lifeline[data-life="${kind}"]`).disabled = true;
+    const btn = $(`.lifeline[data-life="${kind}"]`);
+    btn.disabled = true;
+    restartAnim(btn, 'used');
+    flash('blue');
     Sound.lifeline();
     ({ fifty, phone, audience, swap })[kind]();
   }
@@ -534,7 +722,7 @@
     const cur = game.current;
     const wrong = shuffle([0, 1, 2, 3].filter(i => i !== cur.correct)).slice(0, 2);
     cur.removed = wrong;
-    wrong.forEach(i => { const b = $$('.answer')[i]; b.classList.add('removed'); b.disabled = true; });
+    wrong.forEach(i => { const b = $$('.answer')[i]; b.classList.remove('enter'); b.classList.add('removed'); b.disabled = true; });
   }
 
   function audience() {
@@ -719,8 +907,151 @@
   }
 
   /* =========================================================
+   * Options
+   * ======================================================= */
+  function openOptions() {
+    const o = profile.options;
+    const inGame = $('#screen-game').classList.contains('active') && game && !game.over;
+    const seg = (name, entries, cur) => `<div class="seg">${entries.map(([k, label]) =>
+      `<label><input type="radio" name="${name}" value="${k}" ${cur === k ? 'checked' : ''}><span>${esc(label)}</span></label>`).join('')}</div>`;
+    openModal(`
+      <div class="modal-big">⚙️</div>
+      <h3>Options</h3>
+      <div class="opts">
+        <label class="opt">
+          <span><b>📚 Pack de questions étendu</b><small>+${PLUS_QUESTIONS.length} questions réparties dans toutes les catégories</small></span>
+          <input type="checkbox" class="switch" data-opt="extended" ${o.extended ? 'checked' : ''}>
+        </label>
+        <label class="opt">
+          <span><b>✍️ Inclure mes questions</b><small>${profile.custom.length} question(s) personnelle(s)</small></span>
+          <input type="checkbox" class="switch" data-opt="custom" ${o.custom ? 'checked' : ''}>
+        </label>
+        <div class="opt opt-col"><b>⏱️ Chrono</b>${seg('opt-timer', Object.entries(TIME_MODES).map(([k, m]) => [k, m.label]), o.timer)}
+          ${inGame ? '<small>Le changement s\'applique à la prochaine question.</small>' : ''}</div>
+        <div class="opt opt-col"><b>✨ Animations</b>${seg('opt-fx', [['max', 'Spectaculaires'], ['low', 'Réduites']], o.fx)}
+          ${reducedMotion ? '<small>Ton système demande des animations réduites : elles restent légères.</small>' : ''}</div>
+      </div>
+      <p class="opt-total" id="opt-total"></p>
+      <div class="modal-actions">
+        ${inGame ? '' : '<button class="btn btn-ghost" data-go="editor" type="button">➕ Gérer mes questions</button>'}
+        <button class="btn btn-gold" data-close type="button">OK</button>
+      </div>`);
+    const total = () => { $('#opt-total').textContent = `${QUESTIONS.length} questions disponibles au total`; };
+    total();
+    $('#modal-card').addEventListener('change', e => {
+      const t = e.target;
+      if (t.dataset.opt) o[t.dataset.opt] = t.checked;
+      if (t.name === 'opt-timer') o.timer = t.value;
+      if (t.name === 'opt-fx') o.fx = t.value;
+      saveProfile(); rebuildPool(); applyFx(); total();
+      if ($('#screen-cats').classList.contains('active')) renderCats();
+      Sound.click();
+    });
+  }
+
+  /* =========================================================
+   * Éditeur « Mes questions »
+   * ======================================================= */
+  function renderEditor() {
+    const sel = $('#ed-cat');
+    if (!sel.options.length) {
+      sel.innerHTML = CATEGORIES.map(c => `<option value="${c.id}">${c.emoji} ${esc(c.name)}</option>`).join('');
+    }
+    $('#ed-count').textContent = profile.custom.length;
+    $('#editor-list').innerHTML = profile.custom.length
+      ? profile.custom.slice().reverse().map((q, k) => {
+          const c = CAT_BY_ID[q.cat];
+          return `<li class="ed-item" style="--i:${k}">
+            <div class="ed-body">
+              <span class="ed-meta">${c ? c.emoji + ' ' + esc(c.name) : esc(q.cat)} · ${'★'.repeat(q.d)}${'☆'.repeat(3 - q.d)}</span>
+              <b>${esc(q.q)}</b>
+              <span class="ed-ans"><span class="good">✔ ${esc(q.a[0])}</span> ${q.a.slice(1).map(x => `<span class="bad">✘ ${esc(x)}</span>`).join(' ')}</span>
+            </div>
+            <button class="icon-btn ed-del" data-del="${esc(q.id)}" type="button" aria-label="Supprimer cette question">🗑️</button>
+          </li>`;
+        }).join('')
+      : '<li class="ed-empty">Aucune question pour l\'instant. Ajoute la première ! ✍️</li>';
+  }
+
+  function validQuestion(x) {
+    return x && CAT_BY_ID[x.cat] && typeof x.q === 'string' && x.q.trim() &&
+      Array.isArray(x.a) && x.a.length === 4 && x.a.every(s => typeof s === 'string' && s.trim()) &&
+      new Set(x.a.map(s => s.trim().toLowerCase())).size === 4 && [1, 2, 3].includes(+x.d);
+  }
+  const newCustomId = () => 'custom-' + Date.now().toString(36) + '-' + rand(1e6).toString(36);
+
+  $('#editor-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const item = {
+      id: newCustomId(),
+      cat: $('#ed-cat').value,
+      q: $('#ed-q').value.trim(),
+      a: ['#ed-good', '#ed-bad1', '#ed-bad2', '#ed-bad3'].map(s => $(s).value.trim()),
+      d: +$('input[name="ed-d"]:checked').value
+    };
+    if (!validQuestion(item)) {
+      $('#ed-error').textContent = 'Les 4 réponses doivent être remplies et toutes différentes.';
+      restartAnim($('#editor-form'), 'shake');
+      return;
+    }
+    $('#ed-error').textContent = '';
+    profile.custom.push(item);
+    saveProfile(); rebuildPool(); renderEditor();
+    ['#ed-q', '#ed-good', '#ed-bad1', '#ed-bad2', '#ed-bad3'].forEach(s => { $(s).value = ''; });
+    $('#ed-q').focus();
+    const first = $('#editor-list .ed-item');
+    if (first) first.classList.add('fresh');
+    Sound.correct();
+    toast('✍️', 'Question ajoutée', CAT_BY_ID[item.cat].name, profile.options.custom ? 'Elle peut tomber dès ta prochaine partie.' : 'Active « Inclure mes questions » dans ⚙️ Options pour la jouer.');
+  });
+
+  $('#editor-list').addEventListener('click', e => {
+    const del = e.target.closest('[data-del]');
+    if (!del) return;
+    const li = del.closest('.ed-item');
+    const remove = () => {
+      profile.custom = profile.custom.filter(q => q.id !== del.dataset.del);
+      saveProfile(); rebuildPool(); renderEditor();
+    };
+    if (li && !fxLow()) { li.classList.add('gone'); setTimeout(remove, 280); } else remove();
+    Sound.click();
+  });
+
+  $('#ed-export').addEventListener('click', () => {
+    const data = JSON.stringify(profile.custom.map(({ cat, q, a, d }) => ({ cat, q, a, d })), null, 2);
+    const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = 'mes-questions-millionnaire.json';
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
+  $('#ed-import').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const list = JSON.parse(await file.text());
+      if (!Array.isArray(list)) throw new Error('format');
+      const known = new Set(profile.custom.map(q => q.q.trim().toLowerCase()));
+      let added = 0;
+      for (const x of list) {
+        if (!validQuestion(x) || known.has(x.q.trim().toLowerCase())) continue;
+        profile.custom.push({ id: newCustomId(), cat: x.cat, q: x.q.trim().slice(0, 200), a: x.a.map(s => s.trim().slice(0, 80)), d: +x.d });
+        known.add(x.q.trim().toLowerCase());
+        added++;
+      }
+      saveProfile(); rebuildPool(); renderEditor();
+      toast('📥', 'Import terminé', `${added} question(s) ajoutée(s)`, added < list.length ? 'Les doublons et questions invalides ont été ignorés.' : '');
+    } catch (err) {
+      toast('⚠️', 'Import impossible', 'Fichier invalide', 'Utilise un fichier exporté depuis « Mes questions ».');
+    }
+  });
+
+  /* =========================================================
    * Événements
    * ======================================================= */
+  $('#options-btn').addEventListener('click', () => { Sound.click(); openOptions(); });
   function goHomeFromAnywhere() {
     if (game && !game.over && $('#screen-game').classList.contains('active')) {
       openModal(`
@@ -760,7 +1091,8 @@
 
   document.addEventListener('click', e => {
     const go = e.target.closest('[data-go]');
-    if (go) { Sound.click(); show(go.dataset.go); return; }
+    if (go) { Sound.click(); modalOnClose = null; closeModal(); show(go.dataset.go); return; }
+    if (e.target.closest('[data-open-options]')) { Sound.click(); openOptions(); return; }
     const cat = e.target.closest('[data-cat]');
     if (cat) { startGame(cat.dataset.cat); return; }
     if (e.target.closest('[data-close]')) { closeModal(); return; }

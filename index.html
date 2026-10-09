@@ -20,6 +20,9 @@
 <body>
   <div class="bg" aria-hidden="true"><div class="bg-rays"></div></div>
   <canvas id="confetti" aria-hidden="true"></canvas>
+  <div class="fx-flash" id="fx-flash" aria-hidden="true"></div>
+  <div class="fx-vignette" id="fx-vignette" aria-hidden="true"></div>
+  <div class="banner" id="banner" aria-live="polite" hidden></div>
 
   <header class="topbar">
     <button class="brand" id="brand-home" type="button" aria-label="Retour à l'accueil">
@@ -32,12 +35,14 @@
       <span class="chip-bank" id="chip-bank">0 €</span>
     </div>
     <button class="icon-btn" id="sound-toggle" type="button" aria-label="Couper le son">🔊</button>
+    <button class="icon-btn" id="options-btn" type="button" aria-label="Options">⚙️</button>
   </header>
 
   <main>
     <!-- ACCUEIL -->
     <section id="screen-home" class="screen active">
       <div class="hero">
+        <div class="coins" id="coins" aria-hidden="true"></div>
         <div class="logo-rings" aria-hidden="true"><span></span><span></span><span></span></div>
         <h1 class="logo">
           <small>Qui veut gagner</small>
@@ -50,7 +55,11 @@
         <div class="card start-card">
           <label for="player-name" class="label">Ton nom de candidat</label>
           <input id="player-name" class="input" maxlength="20" placeholder="Ex. : Clément" autocomplete="nickname">
-          <button class="btn btn-gold btn-xl" id="btn-play" type="button">🎬 Jouer</button>
+          <button class="btn btn-gold btn-xl btn-glow" id="btn-play" type="button">🎬 Jouer</button>
+          <div class="start-links">
+            <button class="btn btn-ghost btn-sm" data-go="editor" type="button">➕ Mes questions</button>
+            <button class="btn btn-ghost btn-sm" data-open-options type="button">⚙️ Options</button>
+          </div>
           <p class="rank-line">Rang : <b id="home-rank">Candidat</b></p>
         </div>
 
@@ -96,6 +105,10 @@
       <div class="screen-head">
         <button class="btn btn-ghost" data-go="home" type="button">← Retour</button>
         <h2>Choisis ton thème</h2>
+        <div class="head-actions">
+          <span class="pack-pill" id="pack-pill"></span>
+          <button class="btn btn-ghost btn-sm" data-go="editor" type="button">➕ Mes questions</button>
+        </div>
       </div>
       <div class="cat-grid" id="cat-grid"></div>
     </section>
@@ -142,6 +155,47 @@
       </div>
     </section>
 
+    <!-- MES QUESTIONS -->
+    <section id="screen-editor" class="screen">
+      <div class="screen-head">
+        <button class="btn btn-ghost" data-go="cats" type="button">← Thèmes</button>
+        <h2>Mes questions</h2>
+      </div>
+      <div class="editor-grid">
+        <form class="card editor-form" id="editor-form" autocomplete="off">
+          <h3 class="card-title">Ajouter une question</h3>
+          <label class="label" for="ed-cat">Catégorie</label>
+          <select class="input" id="ed-cat" required></select>
+          <label class="label" for="ed-q">Question</label>
+          <textarea class="input" id="ed-q" rows="2" maxlength="200" required placeholder="Ex. : Quelle est la capitale du Gabon ?"></textarea>
+          <label class="label" for="ed-good">Bonne réponse</label>
+          <input class="input input-good" id="ed-good" maxlength="80" required placeholder="Libreville">
+          <label class="label">Mauvaises réponses</label>
+          <input class="input input-bad" id="ed-bad1" maxlength="80" required placeholder="Port-Gentil" aria-label="Mauvaise réponse 1">
+          <input class="input input-bad" id="ed-bad2" maxlength="80" required placeholder="Franceville" aria-label="Mauvaise réponse 2">
+          <input class="input input-bad" id="ed-bad3" maxlength="80" required placeholder="Oyem" aria-label="Mauvaise réponse 3">
+          <span class="label">Difficulté</span>
+          <div class="seg" id="ed-diff" role="radiogroup">
+            <label><input type="radio" name="ed-d" value="1" checked><span>Facile</span></label>
+            <label><input type="radio" name="ed-d" value="2"><span>Moyen</span></label>
+            <label><input type="radio" name="ed-d" value="3"><span>Difficile</span></label>
+          </div>
+          <p class="form-error" id="ed-error" role="alert"></p>
+          <button class="btn btn-gold" type="submit">Ajouter la question</button>
+        </form>
+        <div class="card editor-list-card">
+          <h3 class="card-title">Ma banque <span class="muted" id="ed-count">0</span></h3>
+          <p class="muted small">Tes questions sont mélangées aux autres dans leur catégorie (désactivable dans ⚙️ Options). Elles sont enregistrées dans ce navigateur.</p>
+          <ul class="editor-list" id="editor-list"></ul>
+          <div class="editor-io">
+            <button class="btn btn-ghost btn-sm" id="ed-export" type="button">⬇️ Exporter</button>
+            <label class="btn btn-ghost btn-sm" for="ed-import">⬆️ Importer</label>
+            <input type="file" id="ed-import" accept="application/json,.json" hidden>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- FIN -->
     <section id="screen-end" class="screen">
       <div class="end-wrap">
@@ -178,6 +232,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
   <script src="js/questions.js"></script>
+  <script src="js/questions-plus.js"></script>
   <script src="js/game.js"></script>
 </body>
 </html>
